@@ -157,7 +157,7 @@ class WeeklySchedule(object):
         "20"                 string of an integer 0-127
         20                   integer 0-127 representation
 
-        Raises TypeError if 'weekdays' cannot be parsed.
+        Raises ValueError if 'weekdays' cannot be parsed.
 
         >>> WeeklySchedule(127).to_list()
         ['M', 'T', 'W', 'R', 'F', 'S', 'U']
@@ -177,6 +177,8 @@ class WeeklySchedule(object):
         ['M', 'T']
         >>> WeeklySchedule('8').to_list()
         ['R']
+        >>> WeeklySchedule('').to_list()
+        []
 
         >>> WeeklySchedule('[M, T, W]')
         Traceback (most recent call last):
@@ -251,7 +253,7 @@ class WeeklySchedule(object):
         48
         """
         if not isinstance(weekdays, list):
-            raise TypeError, "weekdays must be a list of day names"
+            raise ValueError, "weekdays must be a list of day names"
         ints = []
         for day in weekdays:
             if day in WEEKDAY_NAMES:
@@ -285,7 +287,7 @@ class WeeklySchedule(object):
         >>> s.to_words()
         'Friday, Saturday'
         """
-        self.from_list([day.strip() for day in words.split(",")])
+        self.from_list([day.strip() for day in words.split(",") if day.strip() != ""])
 
     def to_words(self, repr=WEEKDAY_NAMES):
         """Return str representation of list of day names in this schedule.
@@ -359,6 +361,12 @@ class WeeklySchedule(object):
         True
         >>> WeeklySchedule(48) == WeeklySchedule("Saturday")
         False
+        >>> WeeklySchedule(0) == None
+        True
+        >>> WeeklySchedule(0) == ""
+        True
+        >>> WeeklySchedule(0) == []
+        True
         """
         try:
             return self.to_byte() == other.to_byte()
@@ -367,8 +375,8 @@ class WeeklySchedule(object):
             # If other is a dict, string, or incorrect list, will result in
             # an empty schedule.
             try:
-                return self == WeeklySchedule(other).to_byte()
-            except TypeError:
+                return self.to_byte() == WeeklySchedule(other).to_byte()
+            except ValueError:
                 return False
 
     def __ne__(self, other):

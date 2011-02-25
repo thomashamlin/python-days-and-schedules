@@ -24,9 +24,9 @@ schedules.
 Author:  Thomas Hamlin <thomas@metaphorlab.com>
 URL:     https://github.com/thomashamlin/python-days-and-schedules
 """
+import ast
 from datetime import date, timedelta, datetime as dt
 
-WEEKDAY_INTS = [0, 1, 2, 3, 4, 5, 6]
 WEEKDAY_BITS = [1, 2, 4, 8, 16, 32, 64]
 WEEKDAY_ABBR1 = ['M', 'T', 'W', 'R', 'F', 'S', 'U']
 WEEKDAY_ABBR2 = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su']
@@ -128,10 +128,10 @@ class DayRange(object):
         represented by the WeeklySchedule object.
 
         >>> r = DayRange(date(2009, 9, 1), date(2009, 9, 17))
-        >>> fridays = WeeklySchedule(weekdays=['F'])
+        >>> fridays = WeeklySchedule(['F'])
         >>> r.dates_for_weeklyschedule(fridays)
         [datetime.date(2009, 9, 4), datetime.date(2009, 9, 11)]
-        >>> mon_to_fri = WeeklySchedule(weekdays=['M', 'T', 'W', 'R', 'F'])
+        >>> mon_to_fri = WeeklySchedule(['M', 'T', 'W', 'R', 'F'])
         >>> r.dates_for_weeklyschedule(mon_to_fri)
         [datetime.date(2009, 9, 1), datetime.date(2009, 9, 2), datetime.date(2009, 9, 3), datetime.date(2009, 9, 4), datetime.date(2009, 9, 7), datetime.date(2009, 9, 8), datetime.date(2009, 9, 9), datetime.date(2009, 9, 10), datetime.date(2009, 9, 11), datetime.date(2009, 9, 14), datetime.date(2009, 9, 15), datetime.date(2009, 9, 16), datetime.date(2009, 9, 17)]
         """
@@ -148,71 +148,93 @@ class WeeklySchedule(object):
     This abstraction does not concern itself with what day the week
     starts.
     """
-    def __init__(self, weekdays=None, byte=None):
-        """'weekdays' is a sequence of 1-letter weekday abbreviations.
+    def __init__(self, weekdays=[]):
+        """Tries to parse a variety of schedule representations:
 
-        >>> print WeeklySchedule(byte=127)
+        ['M', 'Tu', 'Fri']   list of day names 
+        "['M', 'Tu', 'Fri']" string representation of a list of day names
+        "M, Tu, Fri"         string of comma-separated day names 
+        "20"                 string of an integer 0-127
+        20                   integer 0-127 representation
+
+        Raises TypeError if 'weekdays' cannot be parsed.
+
+        >>> WeeklySchedule(127).to_list()
         ['M', 'T', 'W', 'R', 'F', 'S', 'U']
-        >>> print WeeklySchedule(weekdays=['Mon', 'Tue', 'Wed'])
+        >>> WeeklySchedule(['Mon', 'Tue', 'Wed']).to_list()
         ['M', 'T', 'W']
-        >>> print WeeklySchedule(weekdays=['Monday', 'Th', 'F', 'Su'])
+        >>> WeeklySchedule(['Monday', 'Th', 'F', 'Su']).to_list()
         ['M', 'R', 'F', 'U']
-        >>> print WeeklySchedule(byte=3)
-        ['M', 'T']
-        >>> print WeeklySchedule(byte=8)
+        >>> WeeklySchedule("['M', 'Tue', 'Sunday']").to_list()
+        ['M', 'T', 'U']
+        >>> WeeklySchedule("M, T, Wed, Th, Sunday").to_list()
+        ['M', 'T', 'W', 'R', 'U']
+        >>> WeeklySchedule("Thursday").to_list()
         ['R']
+        >>> WeeklySchedule(0).to_list()
+        []
+        >>> WeeklySchedule(3).to_list()
+        ['M', 'T']
+        >>> WeeklySchedule('8').to_list()
+        ['R']
+
+        >>> WeeklySchedule('[M, T, W]')
+        Traceback (most recent call last):
+        ValueError: '[M, T, W]' is not a valid str repr of a list of weekday names
+
+        >>> WeeklySchedule('asdfkl8j')
+        Traceback (most recent call last):
+        ValueError: 'asdfkl8j' is not a valid weekday name or abbrev
+
+        >>> WeeklySchedule('1024')
+        Traceback (most recent call last):
+        ValueError: 1024 is not an int from 0 to 127
         """
-        if weekdays is not None:
-            self.from_names(weekdays)
-        elif byte is not None:
-            self.from_byte(byte)
+        if isinstance(weekdays, int):
+            self.from_byte(weekdays)
+        elif isinstance(weekdays, list):
+            self.from_list(weekdays)
+        elif isinstance(weekdays, str):
+            if weekdays.isdigit():
+                # looks like "8"
+                self.from_byte(int(weekdays))
+            elif weekdays.startswith("[") and weekdays.endswith("]"):
+                # looks like "['M', 'T']", so eval it safely or raises exception
+                try:
+                    self.from_list(ast.literal_eval(weekdays))
+                except:
+                    raise ValueError, "'%s' is not a valid str repr of a list of weekday names" % weekdays
+            else:
+                self.from_words(weekdays)
         else:
-            self.from_names([])
+            self.from_list([])
 
     def from_byte(self, byte):
         """Set schedule corresponding to byte representation given.
         """
         index = 0
         self._weekday_ints = []
+        if byte < 0 or byte > 127:
+            raise ValueError, "%s is not an int from 0 to 127" % byte
         for daybit in WEEKDAY_BITS:
             if daybit & byte:
                 self._weekday_ints.append(index)
             index += 1
 
-    def from_names(self, weekdays):
-        """Return list of integers corresponding to specified list of day names.
-        'weekdays' may be list of 1, 2, or 3 letter day abbreviations, or full names.
-        """
-        ints = []
-        for day in weekdays:
-            if day in WEEKDAY_INTS:
-                ints.append(WEEKDAY_INTS.index(day))
-            elif day in WEEKDAY_NAMES:
-                ints.append(WEEKDAY_NAMES.index(day))
-            elif day in WEEKDAY_ABBR1:
-                ints.append(WEEKDAY_ABBR1.index(day))
-            elif day in WEEKDAY_ABBR2:
-                ints.append(WEEKDAY_ABBR2.index(day))
-            elif day in WEEKDAY_ABBR3:
-                ints.append(WEEKDAY_ABBR3.index(day))
-        self._weekday_ints = ints
-
     def to_byte(self):
         """Return single byte integer representing the schedule
 
-        >>> WeeklySchedule(weekdays=['M']).to_byte()
+        >>> WeeklySchedule(['M']).to_byte()
         1
-        >>> WeeklySchedule(weekdays=['T', 'W']).to_byte()
+        >>> WeeklySchedule(['T', 'W']).to_byte()
         6
-        >>> WeeklySchedule(weekdays=['T', 'R']).to_byte()
+        >>> WeeklySchedule(['T', 'R']).to_byte()
         10
-        >>> WeeklySchedule(weekdays=['M', 'F']).to_byte()
+        >>> print WeeklySchedule(['M', 'F'])
         17
-        >>> WeeklySchedule(weekdays=['F', 'S']).to_byte()
-        48
-        >>> WeeklySchedule(weekdays=['U']).to_byte()
+        >>> WeeklySchedule(['U']).to_byte()
         64
-        >>> WeeklySchedule(weekdays=['M','T','W','R','F','S','U']).to_byte()
+        >>> WeeklySchedule(['M','T','W','R','F','S','U']).to_byte()
         127
         """
         byte = 0
@@ -220,13 +242,69 @@ class WeeklySchedule(object):
             byte |= WEEKDAY_BITS[day]
         return byte
 
+    def from_list(self, weekdays):
+        """Set schedule corresponding to list of day names.
+
+        >>> s = WeeklySchedule(127)
+        >>> s.from_list(['F', 'S'])
+        >>> s.to_byte()
+        48
+        """
+        if not isinstance(weekdays, list):
+            raise TypeError, "weekdays must be a list of day names"
+        ints = []
+        for day in weekdays:
+            if day in WEEKDAY_NAMES:
+                ints.append(WEEKDAY_NAMES.index(day))
+            elif day in WEEKDAY_ABBR1:
+                ints.append(WEEKDAY_ABBR1.index(day))
+            elif day in WEEKDAY_ABBR2:
+                ints.append(WEEKDAY_ABBR2.index(day))
+            elif day in WEEKDAY_ABBR3:
+                ints.append(WEEKDAY_ABBR3.index(day))
+            else:
+                raise ValueError, "'%s' is not a valid weekday name or abbrev" % day
+        self._weekday_ints = ints
+
+    def to_list(self, repr=WEEKDAY_ABBR1):
+        """Return list representation of days in this schedule.
+
+        >>> s = WeeklySchedule(48)
+        >>> s.to_list()
+        ['F', 'S']
+        >>> s.to_list(WEEKDAY_ABBR3_CAPS)
+        ['FRI', 'SAT']
+        """
+        return [repr[d] for d in self._weekday_ints]
+
+    def from_words(self, words):
+        """Try to construct schedule from str like "Mon, Tue, Wed".
+
+        >>> s = WeeklySchedule(0)
+        >>> s.from_words(" F , S ")
+        >>> s.to_words()
+        'Friday, Saturday'
+        """
+        self.from_list([day.strip() for day in words.split(",")])
+
+    def to_words(self, repr=WEEKDAY_NAMES):
+        """Return str representation of list of day names in this schedule.
+        'repr' can be any of the WEEKDAY_* formats (full names by default).
+
+        >>> s = WeeklySchedule(48)
+        >>> s.to_words()
+        'Friday, Saturday'
+        >>> s.to_words(WEEKDAY_ABBR2)
+        'Fr, Sa'
+        """
+        return ", ".join([repr[d] for d in self._weekday_ints])
+
     def __iter__(self):
         """Iterate over the weekdays in this schedule.
 
-        >>> s = WeeklySchedule(weekdays=['M', 'T', 'W'])
+        >>> s = WeeklySchedule(['M', 'T', 'W'])
         >>> [day for day in s]
         ['M', 'T', 'W']
-
         """
         return self.next()
 
@@ -237,20 +315,18 @@ class WeeklySchedule(object):
     def __contains__(self, day):
         """Return true if schedule contains date, weekday number, weekday name/abbr
 
-        >>> s = WeeklySchedule(weekdays=['M', 'T', 'W'])
+        >>> s = WeeklySchedule(['M', 'T', 'W'])
         >>> from datetime import date
         >>> some_thursday = date(2009, 7, 2)
         >>> some_thursday in s
         False
+        >>> some_thursday.weekday() in s
+        False
         >>> some_monday = date(2009, 8, 31)
         >>> some_monday in s
         True
-        >>> 0 in s
+        >>> some_monday.weekday() in s
         True
-        >>> 1 in s
-        True
-        >>> 3 in s
-        False
         >>> 'M' in s
         True
         >>> 'Monday' in s
@@ -258,6 +334,12 @@ class WeeklySchedule(object):
         >>> 'Saturday' in s
         False
         >>> 'Invalid string' in s
+        False
+        >>> 0 in s
+        True
+        >>> 1 in s
+        True
+        >>> 3 in s
         False
         """
         try:
@@ -270,6 +352,14 @@ class WeeklySchedule(object):
                 or (day in WEEKDAY_NAMES and WEEKDAY_NAMES.index(day) in self._weekday_ints)
 
     def __eq__(self, other):
+        """
+        >>> WeeklySchedule(['M', 'T', 'W']) == WeeklySchedule("['Tue', 'Wed', 'Mon']")
+        True
+        >>> WeeklySchedule(48) == WeeklySchedule("Friday, Saturday")
+        True
+        >>> WeeklySchedule(48) == WeeklySchedule("Saturday")
+        False
+        """
         try:
             return self.to_byte() == other.to_byte()
         except AttributeError:
@@ -277,17 +367,20 @@ class WeeklySchedule(object):
             # If other is a dict, string, or incorrect list, will result in
             # an empty schedule.
             try:
-                return self == WeeklySchedule(weekdays=other).to_byte()
+                return self == WeeklySchedule(other).to_byte()
             except TypeError:
                 return False
 
     def __ne__(self, other):
         return not self == other
 
-    def __str__(self, repr=None):
-        if not repr:
-            repr = WEEKDAY_ABBR1
-        return "[%s]" % (", ".join([("'%s'" % repr[d]) for d in self._weekday_ints]))
+    def __str__(self):
+        """Return byte representation of schedule as a string.
+
+        >>> print WeeklySchedule(['F', 'S'])
+        48
+        """
+        return "%s" % self.to_byte()
 
 if __name__ == '__main__':
     import doctest

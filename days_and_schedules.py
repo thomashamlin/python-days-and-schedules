@@ -59,6 +59,9 @@ class DayRange(object):
         self.end = end
         self.dates = [d for d in self]
 
+    def __eq__(self, other):
+        return self.start == other.start and self.end == other.end
+
     def __len__(self):
         return (self.end - self.start).days + 1
 
